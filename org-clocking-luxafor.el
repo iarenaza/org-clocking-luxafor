@@ -3,9 +3,9 @@
 ;; Copyright (C) 2016 onwards Iñaki Arenaza
 
 ;; Author: Iñaki Arenaza <iarenaza@escomposlinux.org>
-;; Version: 0.1
+;; Version: 0.2
 ;; Created: 2016.12.23
-;; Package-Requires: ((emacs "23.0") (org-mode "8.0"))
+;; Package-Requires: ((emacs "24.3") (org-mode "8.0"))
 ;; Keywords: org-mode clock, luxafor
 ;; URL: https://github.com/iarenaza/org-clocking-luxafor.git
 
@@ -35,7 +35,7 @@
 ;;     (require 'org-clocking-luxafor)
 ;;
 ;; Or if you didn't install it in the load path, specify the path
-;; to the elisp file. E.g:
+;; to the elisp file.  E.g:
 ;;
 ;;     (require 'org-clocking-luxafor "~/lisp-code/org-clocking-luxafor.el")
 ;;
@@ -47,52 +47,79 @@
 
 ;;; Code:
 
+(require 'cl-lib)
+
+(defgroup org-clocking-luxafor nil
+  "Change the colour of Luxafor LEDs when clocking in/out in org-mode"
+  :prefix "org-clocking-luxafor-"
+  :group 'applications
+  :link '(url-link :tag "GitHub" "https://github.com/iarenaza/org-clocking-luxafor")
+  :link '(emacs-commentary-link :tag "Commentary" "org-clocking-luxafor"))
+
 ;; Some of the usual Luxafor patterns.
-(defconst org-clocking-luxafor-patterns
-  '(off    "\x01\xff\x00\x00\x00\x00\x00\x00"
+(defcustom org-clocking-luxafor-patterns
+  '((off                . "\x01\xff\x00\x00\x00\x00\x00\x00")
     ;;
-    red    "\x01\xff\xff\x00\x00\x00\x00\x00"
-    green  "\x01\xff\x00\xff\x00\x00\x00\x00"
-    blue   "\x01\xff\x00\x00\xff\x00\x00\x00"
-    yellow "\x01\xff\xff\xff\x00\x00\x00\x00"
+    (red                . "\x01\xff\xff\x00\x00\x00\x00\x00")
+    (green              . "\x01\xff\x00\xff\x00\x00\x00\x00")
+    (blue               . "\x01\xff\x00\x00\xff\x00\x00\x00")
+    (yellow             . "\x01\xff\xff\xff\x00\x00\x00\x00")
     ;;
-    police             "\x06\x05\x04\x00\x00\x00\x00\x00"
-    luxafor_x1         "\x06\x01\x01\x00\x00\x00\x00\x00"
-    random1_x1         "\x06\x02\x01\x00\x00\x00\x00\x00"
-    random2_x1         "\x06\x03\x01\x00\x00\x00\x00\x00"
-    random3_x1         "\x06\x04\x01\x00\x00\x00\x00\x00"
-    random4_x1         "\x06\x06\x01\x00\x00\x00\x00\x00"
-    random5_x1         "\x06\x07\x01\x00\x00\x00\x00\x00"
+    (police             . "\x06\x05\x04\x00\x00\x00\x00\x00")
+    (luxafor_x1         . "\x06\x01\x01\x00\x00\x00\x00\x00")
+    (random1_x1         . "\x06\x02\x01\x00\x00\x00\x00\x00")
+    (random2_x1         . "\x06\x03\x01\x00\x00\x00\x00\x00")
+    (random3_x1         . "\x06\x04\x01\x00\x00\x00\x00\x00")
+    (random4_x1         . "\x06\x06\x01\x00\x00\x00\x00\x00")
+    (random5_x1         . "\x06\x07\x01\x00\x00\x00\x00\x00")
     ;;
-    red_flashes_x3     "\x03\xff\xff\x00\x00\x0a\x00\x03"
-    green_flashes_x3   "\x03\xff\x00\xff\x00\x0a\x00\x03"
-    blue_flashes_x3    "\x03\xff\x00\x00\xff\x0a\x00\x03"
-    white_flashes_x3   "\x03\xff\xff\xff\xff\x0a\x00\x03"
-    yellow_flashes_x3  "\x03\xff\xff\xff\x00\x0a\x00\x03"
-    magenta_flashes_x3 "\x03\xff\xff\x00\xff\x0a\x00\x03"
-    cyan_flashes_x3    "\x03\xff\x00\xff\xff\x0a\x00\x03"
+    (red_flashes_x3     . "\x03\xff\xff\x00\x00\x0a\x00\x03")
+    (green_flashes_x3   . "\x03\xff\x00\xff\x00\x0a\x00\x03")
+    (blue_flashes_x3    . "\x03\xff\x00\x00\xff\x0a\x00\x03")
+    (white_flashes_x3   . "\x03\xff\xff\xff\xff\x0a\x00\x03")
+    (yellow_flashes_x3  . "\x03\xff\xff\xff\x00\x0a\x00\x03")
+    (magenta_flashes_x3 . "\x03\xff\xff\x00\xff\x0a\x00\x03")
+    (cyan_flashes_x3    . "\x03\xff\x00\xff\xff\x0a\x00\x03")
     ;;
-    sea_x5             "\x04\x04\x00\x00\xff\x00\x05\x03"
-    white_wave_x5      "\x04\x04\xff\xff\xff\x00\x05\x04"
-    synthetic_x5       "\x04\x03\x00\xff\x00\x00\x05\x05"
-   )
+    (sea_x5             . "\x04\x04\x00\x00\xff\x00\x05\x03")
+    (white_wave_x5      . "\x04\x04\xff\xff\xff\x00\x05\x04")
+    (synthetic_x5       . "\x04\x03\x00\xff\x00\x00\x05\x05"))
   "Known colours and patterns that can be written to the device.
-It's a plist of pattern-name ana associated value.")
+It's an alist of pattern-name and associated raw binary value."
+  :type '(alist)
+  :tag "Luxafor Patterns"
+  :group 'org-clocking-luxafor)
 
-(defvar org-clocking-luxafor-device-file "/dev/hidraw-luxafor"
-  "Device file for the Luxafor device.")
+(defcustom org-clocking-luxafor-device-file
+  "/dev/hidraw-luxafor"
+  "Device file for the Luxafor device."
+  :type '(file)
+  :tag "Device file"
+  :group 'org-clocking-luxafor)
 
-(defvar org-clocking-luxafor-clock-in-pattern 'red
-  "Luxafor pattern to use for 'org-mode' clock-in.")
+(defun org-clocking-luxafor-patterns-names (patterns)
+  "Get pattern names from PATTERNS alist."
+  (cl-loop for (key . value) in org-clocking-luxafor-patterns
+  			  collect (list 'const key)))
 
-(defvar org-clocking-luxafor-clock-out-pattern 'green
-  "Luxafor pattern to use for 'org-mode' clock-out.")
+(defcustom org-clocking-luxafor-clock-in-pattern
+  'red
+  "Luxafor pattern to use for 'org-mode' clock-in."
+  :type (append '(choice) (org-clocking-luxafor-patterns-names org-clocking-luxafor-patterns))
+  :tag "Clock in pattern"
+  :group 'org-clocking-luxafor)
+
+(defcustom org-clocking-luxafor-clock-out-pattern
+  'green
+  "Luxafor pattern to use for 'org-mode' clock-out."
+  :type (append '(choice) (org-clocking-luxafor-patterns-names org-clocking-luxafor-patterns))
+  :tag "Clock out pattern"
+  :group 'org-clocking-luxafor)
 
 (defun org-clocking-luxafor-change-pattern (pattern)
-  "Given the PATTERN name, write the associated raw byte string
-to the Luxafor device."
+  "Write the PATTERN associated raw byte string to the Luxafor device."
   (let ((coding-system-for-write 'binary)  ;; Tell emacs to write raw binary content
-	(pattern-string (plist-get org-clocking-luxafor-patterns pattern)))
+	(pattern-string (alist-get pattern org-clocking-luxafor-patterns)))
     (when pattern-string
       (with-temp-file org-clocking-luxafor-device-file
 	(insert pattern-string)))))
